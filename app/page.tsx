@@ -53,14 +53,14 @@ export default function SuperApp() {
 
     try {
       const response = await axios.post(
-        "http://127.0.0.1:8000/upload",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+  "https://omnidoc-backend-production.up.railway.app/upload",
+  formData,
+  {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  }
+);
       console.log("Backend response:", response.data);
     } catch (error) {
       console.error("Upload error:", error);
