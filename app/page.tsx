@@ -1,65 +1,158 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+import Editor from "@monaco-editor/react";
+import axios from "axios";
+
+type FileType = "code" | "video" | "audio" | "pdf" | "unsupported" | "";
+
+export default function SuperApp() {
+  const [file, setFile] = useState<File | null>(null);
+  const [fileType, setFileType] = useState<FileType>("");
+  const [content, setContent] = useState<string>("");
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (!acceptedFiles.length) return;
+    const uploadedFile = acceptedFiles[0];
+    setFile(uploadedFile);
+
+    // Detect type
+    if (
+      uploadedFile.type.includes("text") ||
+      uploadedFile.name.endsWith(".js") ||
+      uploadedFile.name.endsWith(".ts") ||
+      uploadedFile.name.endsWith(".py") ||
+      uploadedFile.name.endsWith(".json")
+    ) {
+      setFileType("code");
+      const reader = new FileReader();
+      reader.onload = (e) => setContent((e.target?.result as string) || "");
+      reader.readAsText(uploadedFile);
+    } else if (uploadedFile.type.includes("video")) {
+      setFileType("video");
+      setContent(URL.createObjectURL(uploadedFile));
+    } else if (uploadedFile.type.includes("audio")) {
+      setFileType("audio");
+      const url = URL.createObjectURL(uploadedFile);
+      setContent(url);
+    } else if (
+      uploadedFile.type === "application/pdf" ||
+      uploadedFile.name.endsWith(".pdf")
+    ) {
+      setFileType("pdf");
+      setContent(URL.createObjectURL(uploadedFile));
+    } else {
+      setFileType("unsupported");
+      setContent("");
+    }
+
+    // Send file to FastAPI backend
+    const formData = new FormData();
+    formData.append("file", uploadedFile); // must match UploadFile name
+
+    try {
+      const response = await axios.post(
+        "http://127.0.0.1:8000/upload",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      console.log("Backend response:", response.data);
+    } catch (error) {
+      console.error("Upload error:", error);
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex h-screen bg-gray-900 text-white">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 p-4 border-r border-gray-700">
+        <h1 className="text-2xl font-bold mb-6 text-blue-400">OmniDoc</h1>
+        <div
+          {...getRootProps()}
+          className="border-2 border-dashed border-gray-500 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-700 transition"
+        >
+          <input {...getInputProps()} />
+          {isDragActive ? (
+            <p>Drop the file here...</p>
+          ) : (
+            <p>Drag &amp; drop or click to upload ANY file</p>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </div>
+
+      {/* Main Workspace */}
+      <div className="flex-1 flex flex-col">
+        <div className="h-16 bg-gray-800 border-b border-gray-700 flex items-center px-6">
+          <h2 className="text-lg">
+            {file ? `Editing: ${file.name}` : "Workspace"}
+          </h2>
+          <input
+            type="text"
+            placeholder="Search within all documents..."
+            className="ml-auto bg-gray-900 border border-gray-600 rounded px-4 py-1 w-96 text-sm focus:outline-none focus:border-blue-400"
+          />
+        </div>
+
+        <div className="flex-1 p-4 overflow-hidden relative">
+          {!file && (
+            <div className="flex h-full items-center justify-center text-gray-500">
+              Upload a file to start processing
+            </div>
+          )}
+
+          {fileType === "code" && (
+            <Editor
+              height="100%"
+              theme="vs-dark"
+              value={content}
+              defaultLanguage="javascript"
+              onChange={(val) => setContent(val || "")}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+
+          {fileType === "video" && (
+            <div className="w-full h-full flex items-center justify-center">
+              <video
+                src={content}
+                controls
+                className="w-full h-full"
+              />
+            </div>
+          )}
+
+          {fileType === "audio" && (
+            <div className="w-full h-full flex flex-col items-center justify-center">
+              <audio
+                src={content}
+                controls
+                style={{ width: "80%" }}
+                onError={(e) => console.error("HTML5 audio error:", e)}
+              />
+            </div>
+          )}
+
+          {fileType === "pdf" && (
+            <iframe
+              src={content}
+              className="w-full h-full rounded bg-white"
+              title={file?.name || "PDF"}
+            />
+          )}
+
+          {fileType === "unsupported" && file && (
+            <div className="flex h-full items-center justify-center text-gray-400">
+              Unsupported file type: {file.name}
+            </div>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
